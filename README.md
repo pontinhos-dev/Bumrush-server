@@ -12,7 +12,7 @@ curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/i
 
 The installer downloads and checks the server release, installs its dependencies, creates a dedicated service account, installs and starts `bumrush-main`, and generates a secure **16-character Owner passkey**. It saves a private client enrollment ZIP and prints connection instructions. The passkey is displayed only when output goes to a terminal; it is not printed into noninteractive CI logs.
 
-It uses the public server address from your SSH connection when available. If that address is private or unavailable, it asks ipify for the server's public IP. Supplying `--host` skips that lookup; use it for a DNS name or when your public routing differs from the detected address.
+It uses the public IPv4 address from your SSH connection when available. If that address is private, unavailable, or IPv6, it asks ipify for the server's public IPv4 address. Supplying `--host` skips that lookup; use a public IPv4 address or DNS name resolving to IPv4. The default gameplay listener uses IPv4.
 
 To set the address players should use explicitly, add `--host`. Replace `YOUR_SERVER_ADDRESS` with your public IP address or DNS name:
 
