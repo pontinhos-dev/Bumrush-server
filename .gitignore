@@ -28,6 +28,17 @@ admins.json
 bans.json
 owner-passkey
 .owner-passkey-*
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.pkcs12
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.kdbx
 
 # Local tooling state.
 __pycache__/

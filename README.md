@@ -1,69 +1,168 @@
-# Bumrush dedicated server
+# Bumrush Dedicated Server
 
-Install a headless Bumrush server on an **Ubuntu 24.04 Intel/AMD x86_64** machine with SSH access and root or sudo privileges. The package includes its runtime; no Godot editor, GPU, or desktop is needed. Start with two modern CPU cores and 2 GB RAM, then measure your workload. These are sizing estimates, not a capacity guarantee.
+Host your own **Bumrush** multiplayer server on Linux. Install a ready-to-run server, invite players by address, and moderate matches from inside the game.
+
+The quick start sets up an isolated system service, generates Owner credentials, and prints connection instructions. No Godot editor, graphics card, or desktop session is required.
+
+[Quick start](#quick-start) · [Connect as Owner](#connect-as-owner) · [Documentation](#documentation) · [Releases](https://github.com/pontinhos-dev/Bumrush-server/releases) · [Troubleshooting](docs/troubleshooting.md)
+
+## Requirements
+
+| Item | Requirement |
+| --- | --- |
+| Operating system | Ubuntu 24.04 LTS with systemd |
+| Architecture | Intel/AMD x86_64; ARM is not supported by this package |
+| Access | SSH and an account with `sudo`, or root |
+| Starting resources | 2 modern CPU cores and 2 GB RAM; a planning estimate, not a measured capacity guarantee |
+| Storage | Room for the runtime, an additional release during updates, and private backups |
+| Network | Public IPv4 or IPv4 DNS name, with inbound **UDP 27960** allowed |
+| Players | Up to 8 connected players; clients must use a compatible game protocol |
+
+This repository contains the installer and operating guides. The runtime is distributed through [GitHub Releases](https://github.com/pontinhos-dev/Bumrush-server/releases), rather than committed to Git.
 
 ## Quick start
 
-Run this command on the Linux server:
+### 1. Connect to your server
+
+Create an Ubuntu 24.04 x86_64 machine with your hosting provider, then SSH into it. Replace the example username and address:
+
+```sh
+ssh YOUR_SSH_USER@YOUR_SERVER_ADDRESS
+```
+
+If `curl` is missing on a minimal image, install it first:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates
+```
+
+### 2. Install Bumrush
+
+Run this **on the Linux server**:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart
 ```
 
-The installer downloads and checks the server release, installs its dependencies, creates a dedicated service account, installs and starts `bumrush-main`, and generates a secure **16-character Owner passkey**. It saves a private client enrollment ZIP and prints connection instructions. The passkey is displayed only when output goes to a terminal; it is not printed into noninteractive CI logs.
+The installer:
 
-It uses the public IPv4 address from your SSH connection when available. If that address is private, unavailable, or IPv6, it asks ipify for the server's public IPv4 address. Supplying `--host` skips that lookup; use a public IPv4 address or DNS name resolving to IPv4. The default gameplay listener uses IPv4.
+- Installs the headless runtime dependencies.
+- Downloads the latest server release and verifies GitHub's SHA256 digest and the package manifest.
+- Creates the `bumrush` service account and the `bumrush-main` systemd service.
+- Generates a cryptographically random **16-character Owner passkey** and a private client enrollment ZIP.
+- Starts the server, checks its administration endpoint, and prints the connection steps.
 
-To set the address players should use explicitly, add `--host`. Replace `YOUR_SERVER_ADDRESS` with your public IP address or DNS name:
+To advertise a particular IPv4 address or DNS name, add `--host`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart --host YOUR_SERVER_ADDRESS
 ```
 
-`curl` must already be available to run the download command. On a minimal Ubuntu installation, install it with `sudo apt-get update && sudo apt-get install -y curl ca-certificates`.
+Without `--host`, setup uses the public IPv4 address reached through SSH. For private/NAT addresses or IPv6 SSH sessions, it asks [ipify](https://www.ipify.org/) for the public IPv4 address. An explicit `--host` skips that lookup. The gameplay listener uses IPv4 by default.
 
-Before running downloaded code, you can [inspect the installer](https://github.com/pontinhos-dev/Bumrush-server/blob/main/install.sh). Alternatively, download it to a file, review it, and run `bash install.sh --quickstart`.
-
-## Connect and moderate
-
-1. Allow **UDP 27960** through the cloud provider's firewall. If UFW is already active, the installer adds the game UDP rule while preserving its other rules; it does not enable an inactive firewall. Configure any other host firewall yourself. The installer cannot change a cloud provider's security group or router forwarding rules.
-2. Connect from the matching Bumrush client using the Multiplayer menu, or enter `connect YOUR_SERVER_ADDRESS 27960` in its console.
-3. Download `/opt/bumrush/bumrush-main-admin.zip` through your trusted SSH connection. On your own computer, substitute your actual SSH username and server address:
-
-   ```sh
-   scp SSH_USER@YOUR_SERVER_ADDRESS:/opt/bumrush/bumrush-main-admin.zip .
-   ```
-
-4. Extract the ZIP into the folder containing `Bumrush.exe`. It contains `cfg/admin.cfg` and `cfg/server-main.crt`. Keep both files private. Preserve existing CFG entries if you already administer another server; the Credentials dialog shows which CFG file the client currently uses.
-5. Keep an SSH tunnel open on your computer while moderating:
-
-   ```sh
-   ssh -N -L 27961:127.0.0.1:27961 SSH_USER@YOUR_SERVER_ADDRESS
-   ```
-
-The client uses the saved credentials to authenticate automatically when you join the matching server. Enter `admin` in the console or `/admin` in chat to open the administration menu. You can play normally while acting as Owner.
-
-The TLS administration listener stays on server loopback at **TCP 27961**; the tunnel carries administration traffic. You do not need to expose that TCP port publicly. Use a free local forwarding port and update the CFG's `admin_port` if another tunnel already occupies 27961.
-
-The ZIP and its CFG contain the actual Owner secret. Transfer them only through a trusted route and never attach them to an issue or game release. If installing directly as root, use an SSH account that can read the protected ZIP or copy it to your SSH account with private ownership and permissions first.
-
-## Operate the service
+You can [review the installer](install.sh) before running it. To download and review it locally instead:
 
 ```sh
-sudo systemctl status bumrush-main
-sudo journalctl -u bumrush-main -f
-sudo systemctl restart bumrush-main
-sudo systemctl stop bumrush-main
+curl -fsSLo install.sh https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh
+less install.sh
+bash install.sh --quickstart --host YOUR_SERVER_ADDRESS
 ```
 
-Configuration lives at `/opt/bumrush/instances/main/config/server.cfg`; durable identities and bans live in `/opt/bumrush/instances/main/data/`. The quickstart recovery passkey is retained privately at `/opt/bumrush/quickstart/main/owner-passkey`.
+`--version TAG` selects a specific published runtime release. Rerunning quick start preserves an existing installation; it **does not upgrade it**. Use the [update procedure](docs/server-release-workflow.md) for that.
 
-Rerunning quickstart preserves existing credentials and configuration. It does not silently update a running instance to a different release. Use the packaged release-management tools for a deliberate update or rollback. Back up the instance's configuration and data before updates.
+### 3. Open the gameplay port
 
-See [hosting](docs/server-hosting.md), [administration](docs/server-commands.md), [operations](docs/server-operations.md), and the [release workflow](docs/server-release-workflow.md) for configuration, staff permissions, updates, and recovery.
+Allow inbound **UDP 27960** in your provider's firewall or security group. Preserve your SSH rule. If UFW is already active, setup adds the gameplay rule; it does not enable an inactive firewall or configure a provider's firewall or router.
 
-## What is published here
+| Port | Purpose | Public access |
+| --- | --- | --- |
+| UDP 27960 | Gameplay | Allow players to connect |
+| TCP 27961 | TLS administration | **Keep private**; quick start binds it to loopback |
+| Your SSH TCP port | Server access and admin tunnel | Keep your existing access policy |
 
-This repository distributes the installer and public operating documentation. The matching Linux server package and checksum are [GitHub Release assets](https://github.com/pontinhos-dev/Bumrush-server/releases). Private server state, enrollment files, and the game project's source and asset tree do not belong in this repository.
+### 4. Join the game
 
-The manually triggered [Linux smoke workflow](.github/workflows/smoke-server.yml) installs the published release on Ubuntu 24.04, checks the service and loopback administration listener, verifies a repeat install preserves enrollment and configuration, then stops the service. This checks installation and startup; it does not establish multiplayer capacity or replace a real external-client connection test.
+Open a compatible Bumrush client, choose **Multiplayer**, and enter the server's address and port. You can also use the game console:
+
+```text
+connect YOUR_SERVER_ADDRESS 27960
+```
+
+The generated Owner passkey is for administration. It is not a password players need to join.
+
+## Connect as Owner
+
+Complete these steps **on your gaming PC**. Setup prints commands with your SSH username, address, and port filled in.
+
+1. Download your private enrollment ZIP:
+
+   ```sh
+   scp YOUR_SSH_USER@YOUR_SERVER_ADDRESS:/opt/bumrush/bumrush-main-admin.zip .
+   ```
+
+2. Extract the ZIP. Copy `cfg/admin.cfg` and `cfg/server-main.crt` into the `cfg` folder beside `Bumrush.exe`. If you already have an admin CFG, append the new entry instead of replacing other servers' credentials.
+
+3. Open an SSH tunnel and leave that terminal running while moderating:
+
+   ```sh
+   ssh -N -L 127.0.0.1:27961:127.0.0.1:27961 YOUR_SSH_USER@YOUR_SERVER_ADDRESS
+   ```
+
+4. Join the server. The client authenticates using the saved credentials. Enter `admin` in the console or `/admin` in chat to open the administration menu.
+
+You can play normally while moderating. Owner, Admin, and Moderator roles grant different permissions; the server checks every command. See [Administration](docs/server-commands.md) for staff management, commands, and silent chat commands.
+
+**Keep the ZIP and admin CFG private.** They contain your actual Owner passkey. Administration uses certificate-validated TLS through SSH; TCP 27961 does not need public exposure. Custom SSH ports and tunnel conflicts are covered in [Getting started](docs/getting-started.md).
+
+## Manage your server
+
+Run these commands over SSH:
+
+```sh
+sudo systemctl status bumrush-main --no-pager
+sudo journalctl -u bumrush-main -n 100 --no-pager
+sudo systemctl restart bumrush-main
+sudo systemctl stop bumrush-main
+sudo systemctl start bumrush-main
+```
+
+The service starts automatically after a reboot. The default match is free-for-all on Switchyard. Change maps, player limits, the server name, and voice settings using the [configuration reference](docs/server-configuration.md).
+
+### Important paths
+
+| Path | Contents |
+| --- | --- |
+| `/opt/bumrush/instances/main/config/server.cfg` | Server configuration |
+| `/opt/bumrush/instances/main/data/` | Identities, bans, TLS keys, audit logs, and persistent state |
+| `/opt/bumrush/instances/main/current/` | Active runtime release |
+| `/opt/bumrush/quickstart/main/owner-passkey` | Root-only copy of the initial generated passkey |
+| `/opt/bumrush/bumrush-main-admin.zip` | Private client enrollment, readable by the SSH account that installed it |
+
+Configuration, identities, and bans stay separate from runtime releases. Back them up before maintenance. Use the documented procedures to [back up and restore](docs/server-operations.md) or [update and roll back](docs/server-release-workflow.md); do not replace an existing installation with fresh initialization.
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | First deployment, client enrollment, custom SSH ports, and connection checks |
+| [Hosting options](docs/server-hosting.md) | Quick start, manual installation, Docker, cloud firewalls, and home hosting |
+| [Configuration](docs/server-configuration.md) | Maps, ports, player limits, voice, live settings, and restarts |
+| [Administration](docs/server-commands.md) | Roles, staff, moderation, console/chat use, and credentials |
+| [Operations](docs/server-operations.md) | Services, private backups, restoration, and recovery |
+| [Updates and rollback](docs/server-release-workflow.md) | Verify, stage, activate, and roll back a release |
+| [Troubleshooting](docs/troubleshooting.md) | Installation, connectivity, TLS, enrollment, and service failures |
+| [Security and privacy](docs/security.md) | Trust, credentials, firewall boundaries, logs, and safe issue reports |
+| [Maintainer guide](docs/server-development.md) | Distribution layout, provenance, validation, and publishing |
+
+## Validation and limits
+
+The initial Linux package passed **62 game regression checks** before export. An Ubuntu 24.04 test also verified native service startup, live Owner passkey authentication over TLS, and unchanged credentials/configuration after a repeated install.
+
+These checks establish installation and startup behavior. They do not establish eight-player capacity, a bandwidth guarantee, or connectivity through your particular provider's firewall. Test an external client and measure your workload before advertising a server broadly.
+
+For common failures, start with [Troubleshooting](docs/troubleshooting.md). When reporting a problem, include the release tag, operating system, installation method, and a sanitized error excerpt. Never attach your admin ZIP, CFG, private keys, or server data directory. See [Security reporting](SECURITY.md) for sensitive reports.
+
+## Third-party notices
+
+The release includes Godot and libsodium license notices. Keep the runtime, PCK, native administration library, and bundled notices together. This distribution repository does not grant a separate license to reuse the game's assets or recoverable runtime code.

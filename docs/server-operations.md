@@ -40,8 +40,10 @@ The image health check makes a real certificate-validated TLS `status` request t
 
 The server prints lifecycle and administration events to standard output. Native deployments use journald. Compose limits its JSON logs to three 10 MB files. Inspect `status` for uptime, player count, memory, physics processing time, tick and snapshot rates, aggregate ENet traffic, and per-stream serialized snapshot/recording byte counters. Without recording subscribers there are no detailed POV uploads or distribution.
 
+These helpers belong to the installed release, not this small Git checkout. Use `-B` to avoid adding bytecode cache files inside verified packages.
+
 ```sh
-sudo -u bumrush python3 /opt/bumrush/instances/main/current/tools/bumrushctl.py --profile /opt/bumrush/instances/main/data/owner.profile.json --json status
+sudo -u bumrush python3 -B /opt/bumrush/instances/main/current/tools/bumrushctl.py --profile /opt/bumrush/instances/main/data/owner.profile.json --json status
 ss -lunp | grep 27960
 ss -ltnp | grep 27961
 ps -o pid,%cpu,%mem,rss,etime,cmd -C bumrush-server
@@ -49,22 +51,57 @@ ps -o pid,%cpu,%mem,rss,etime,cmd -C bumrush-server
 
 At 120 physics ticks per second, each tick has about 8.33 ms available. Measure under a full match, including voice and projectiles. Status exposes `memory_bytes` from Godot’s static-allocation monitor, which can report zero in a release build. On Linux, `rss_bytes` reads the process resident-set size from `/proc/self/status`, and reports `-1` when unavailable. Network counters cover ENet gameplay traffic. Use OS measurements alongside game diagnostics before selecting VM size.
 
-A short protocol-11 eight-player check on 12 November 2026 used one native moving client and seven headless clients on a Windows localhost server, while other integration checks also ran. Five instantaneous samples reported mean physics time 2.60 ms, maximum 2.80 ms, maximum Godot static allocation 31.96 MiB, mean outgoing ENet traffic 1.38 MB/s, and incoming 0.34 MB/s. That is roughly 11.0 Mb/s outgoing and 2.7 Mb/s incoming before link overhead. This smoke profile helps identify upload requirements. It is a short local profile and provides no sustained WAN or Linux capacity guarantee. Provision additional bandwidth for variance, voice, and operating-system traffic.
-
-A protocol-12 local eight-client sample measured about 218 KB/s outgoing with no recorders, 294 KB/s with one recorder, and 831 KB/s with eight recorders. The zero-recorder sample was about 84% below the earlier protocol-11 short baseline. Recorder baselines refreshed after map restart, and detailed stream counters stopped after the final unsubscribe. These short local samples characterize this workload; sustained WAN capacity still needs measurement.
+Bandwidth depends on the connected player count, voice, weapon effects, loss/retransmission, and recording subscriptions. Measure the intended workload using application counters plus OS and provider metrics. Snapshot frequency alone does not determine link usage. No sustained Linux/WAN eight-player capacity guarantee is claimed here.
 
 ## Back up and restore
 
-Stop the instance, then back up configuration and the entire data directory to a protected location. The data backup contains reusable administrator credentials and the private TLS identity.
+Stop the instance and back up configuration, the entire data directory, `instance.json`, and its `current` release-selection symlink. For quick-start installations include the original passkey receipt and enrollment ZIP too. This archive contains reusable administrator secrets and the private TLS key.
 
-```sh
-sudo systemctl stop bumrush-main
-sudo tar -czf /root/bumrush-instance-backup.tar.gz -C /opt/bumrush/instances/main config data instance.json
-sudo chmod 0600 /root/bumrush-instance-backup.tar.gz
-sudo systemctl start bumrush-main
+The following creates a new timestamped archive with private permissions from the outset and restarts the stopped service even if archiving fails:
+
+```bash
+sudo bash <<'BACKUP'
+set -euo pipefail
+umask 077
+install -d -m 0700 /root/bumrush-backups
+backup_file="/root/bumrush-backups/bumrush-main-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+test ! -e "$backup_file"
+items=(instances/main/config instances/main/data instances/main/instance.json instances/main/current)
+if [ -d /opt/bumrush/quickstart/main ]; then items+=(quickstart/main); fi
+if [ -f /opt/bumrush/bumrush-main-admin.zip ]; then items+=(bumrush-main-admin.zip); fi
+systemctl stop bumrush-main
+trap 'systemctl start bumrush-main' EXIT
+tar -czf "$backup_file" -C /opt/bumrush "${items[@]}"
+printf 'Private backup: %s\n' "$backup_file"
+BACKUP
 ```
 
-For Docker, stop the instance and use a container volume backup workflow to preserve `server-data`, plus the host’s `deploy/server/config` directory. Restore into a stopped instance with the same ownership and private permissions. Restoring the old TLS identity lets existing administrator profiles continue to validate it.
+Treat an archive from a failed command as incomplete. Keep the last known-good backup, a protected off-host copy, and the matching runtime archive. Backups do not include installed runtime release directories. Select storage encryption and retention appropriate to your host.
+
+### Restore on the same host
+
+First back up the current state. Restore only a trusted archive, with the instance stopped. Check its member list and confirm the backed-up active release still exists under `/opt/bumrush/releases/`:
+
+```sh
+sudo tar -tzf /root/bumrush-backups/BACKUP_FILE.tar.gz
+sudo systemctl stop bumrush-main
+sudo tar -xzf /root/bumrush-backups/BACKUP_FILE.tar.gz -C /opt/bumrush
+```
+
+Replace `BACKUP_FILE` with the actual protected filename. The same-host procedure preserves archived ownership and permissions. Check the restored `current` link matches the restored metadata before starting. The backup records `current` as a symlink without copying its target runtime. Restoring the TLS identity keeps existing clients' trusted certificate valid. Once the restored release selection and private permissions are correct:
+
+```sh
+sudo systemctl start bumrush-main
+sudo systemctl status bumrush-main
+```
+
+For a new host, obtain the matching runtime, recreate the service account and installation layout, and map config/data ownership to the new account's UID/GID. Do not blindly reuse old numeric IDs. Never initialize over restored credentials.
+
+### Docker backups
+
+For a generated Docker installation, stop its Compose project and back up `/srv/bumrush/instances/main/config/`, `data/`, `instance.json`, and `compose.yaml`; preserve UID 10001 ownership when restoring. Keep verified release archives so the image can be rebuilt. The hand-managed Compose example uses named volumes instead, so use a Docker volume backup workflow for that layout.
+
+Logs and reports may contain player names, IP addresses, and moderation history. Review and redact them before sharing outside your staff.
 
 ## Updates, rollback and multiple instances
 

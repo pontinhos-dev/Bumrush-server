@@ -2,15 +2,14 @@
 
 [Hosting](server-hosting.md) · [Administration](server-commands.md) · [Operations](server-operations.md)
 
-Server configuration uses Godot ConfigFile syntax. Strings are quoted, booleans are `true`/`false`, and numbers are unquoted. The supplied native and Docker examples are in `deploy/server/`. Client graphics, controls, microphone settings, and console preferences remain in each client’s own user-data directory.
+Server configuration uses Godot ConfigFile syntax. Strings are quoted, booleans are `true`/`false`, and numbers are unquoted. The supplied native and Docker examples are in `deploy/server/` inside the extracted runtime package. The automated native instance uses `/opt/bumrush/instances/main/config/server.cfg`. Client graphics, controls, microphone settings, and console preferences remain in each client’s own user-data directory.
 
 ## Startup arguments
 
-Godot options go before `--`. Bumrush server options go after it. A dedicated export starts the server automatically, and `--server` also enables dedicated startup when running the source project.
+Godot options go before `--`. Bumrush server options go after it. A dedicated export starts the server automatically.
 
 ```sh
 ./bumrush-server --headless --audio-driver Dummy -- --server --config /etc/bumrush/server.cfg --data-dir /var/lib/bumrush
-godot --headless --path . -- --server --config ./server.cfg
 ```
 
 | Argument | Behavior |
@@ -21,6 +20,7 @@ godot --headless --path . -- --server --config ./server.cfg
 | `--data-dir PATH` | Override durable-state location |
 | `--bind ADDRESS` | Override gameplay listen address |
 | `--port N` | Override gameplay UDP port |
+| `--owner-passkey-file PATH` | During `--init-server` only, read the exact passkey from a protected UTF-8 file; never pass the secret itself |
 | `--server-help` | Print supported server arguments and exit |
 
 Both `--port 27960` and `--port=27960` are accepted. Defaults are applied first, then configuration keys, then explicit command-line overrides. Unknown arguments, sections, keys, or invalid values fail startup. A missing configuration file is allowed only during initialization.
@@ -51,6 +51,36 @@ Relative configuration paths are resolved against the process working directory.
 
 Named native installations write an absolute instance data path; the generated defaults example uses `server-data` relative to the config directory. The generated owner profile uses the configured admin port, loopback host, and TLS name `bumrush-server`. Customize the client profile’s host for remote connections.
 
+## Change common settings
+
+Edit the default native instance with:
+
+```sh
+sudoedit /opt/bumrush/instances/main/config/server.cfg
+```
+
+For example, preserve the existing `[admin]` and `[paths]` sections while changing:
+
+```ini
+[server]
+server_name="My Bumrush Server"
+motd="Welcome. Be respectful and have fun."
+map="fy_snow"
+max_players=8
+voice_enabled=true
+```
+
+Restart for the startup map, bind, ports, capacity, or data path:
+
+```sh
+sudo systemctl restart bumrush-main
+sudo journalctl -u bumrush-main -n 50 --no-pager
+```
+
+An Owner can update a live key in-game with `admin config server_name "My Bumrush Server"`. Flat command keys such as `server_name` correspond to the keys in parentheses in the table. Valid live command changes are persisted. `admin reload_config` applies valid live edits from disk and rejects changes requiring a restart. Do not replace the whole file with the small example above.
+
+`admin changelevel fy_snow` changes the current match; edit `[server] map` and restart to select the map used after future process restarts. Manual edits must preserve service-account ownership and write access to both the config file and its directory.
+
 ## Durable files
 
 | File in data directory | Purpose |
@@ -67,6 +97,8 @@ Initialization refuses to replace any existing identity or initial-owner file. T
 Linux initialization protects the state directory and private files with restrictive owner permissions. An administrator profile contains filesystem paths to the trusted certificate and credential. Relative profile paths are relative to the profile’s directory. Keep profile and credential files out of source control, container images, and deployment archives.
 
 ## Direct remote administration
+
+Keep administration on loopback with an SSH tunnel for the default setup. If direct access is deliberately required, first restrict the administration TCP port to known administrator source IPs in both host and provider firewalls. Never expose it to every address merely to make login work.
 
 Change `[admin] bind` to the interface that should accept administrators, restart the process, and allow TCP 27961 from administrator addresses in your firewall. With Docker, change the host publish rule deliberately, for example `"192.0.2.10:27961:27961/tcp"`, using the host’s actual interface address.
 

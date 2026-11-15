@@ -11,11 +11,51 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Check out the private preview installer
+        if: ${{ github.event.repository.private }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the private release
+        if: ${{ github.event.repository.private }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bumrush-release"
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern server-linux-x86_64.tar.gz \
+            --pattern server-linux-x86_64.tar.gz.sha256 \
+            --dir "$RUNNER_TEMP/bumrush-release"
+          cd "$RUNNER_TEMP/bumrush-release"
+          sha256sum --strict --check server-linux-x86_64.tar.gz.sha256
+
+      - name: Install dependencies for the private preview
+        if: ${{ github.event.repository.private }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update </dev/null
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates python3 libstdc++6 libfontconfig1 </dev/null
+
       - name: Install the published server
+        if: ${{ !github.event.repository.private }}
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart --host 127.0.0.1
+          sudo systemctl is-active --quiet bumrush-main
+
+      - name: Install the private preview server
+        if: ${{ github.event.repository.private }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo env -u GH_TOKEN -u GITHUB_TOKEN python3 tools/smoke_private_release.py \
+            --archive "$RUNNER_TEMP/bumrush-release/server-linux-x86_64.tar.gz" --login "$(id -un)"
           sudo systemctl is-active --quiet bumrush-main
 
       - name: Verify private enrollment and loopback administration
@@ -96,12 +136,27 @@ jobs:
             /opt/bumrush/instances/main/data/admins.json \
             /opt/bumrush/bumrush-main-admin.zip > "$RUNNER_TEMP/bumrush-enrollment-before.sha256"
 
-      - name: Repeat installation and verify preservation
+      - name: Repeat the published installation
+        if: ${{ !github.event.repository.private }}
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart --host 127.0.0.1
           sudo systemctl is-active --quiet bumrush-main
+
+      - name: Repeat the private preview installation
+        if: ${{ github.event.repository.private }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo env -u GH_TOKEN -u GITHUB_TOKEN python3 tools/smoke_private_release.py \
+            --archive "$RUNNER_TEMP/bumrush-release/server-linux-x86_64.tar.gz" --login "$(id -un)"
+          sudo systemctl is-active --quiet bumrush-main
+
+      - name: Verify repeat installation preserves enrollment
+        shell: bash
+        run: |
+          set -euo pipefail
           sudo sha256sum --quiet --check "$RUNNER_TEMP/bumrush-enrollment-before.sha256"
           echo 'Repeat installation preserved the passkey, configuration, Owner record, and private enrollment ZIP.'
 

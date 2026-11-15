@@ -6,12 +6,16 @@ Bumrush uses one authority-owned command policy for cloud servers and listen ser
 
 ## Join your own server as Owner
 
-New interactive server installation asks twice for an Owner passkey of 12–128 printable characters. The listen-host menu has matching masked passkey fields; its local player is automatically Owner. Each remote staff member should have a separate named account and passkey.
+The [quick start](server-hosting.md#one-command-cloud-setup) generates a secure 16-character Owner passkey, installs a service, and exports a private client ZIP. Follow the printed SCP command to transfer that ZIP to your gaming PC. Preserve existing CFG entries when copying its `cfg/admin.cfg` and trusted certificate into the game's folder. Keep the printed SSH tunnel open, join the gameplay address, and open `admin` or `/admin`.
 
-For a standalone cloud instance, the setup helper creates its configuration, certificate and private client enrollment files:
+New interactive manual server installation asks twice for an Owner passkey of 12–128 printable characters. The listen-host menu has matching masked passkey fields; its local player is automatically Owner. Each remote staff member should have a separate named account and passkey.
+
+## Standalone passkey enrollment
+
+The following alternative is for a fresh standalone instance, not an already initialized quick-start service. From the **extracted runtime package** directory, the helper creates its config, certificate, and private client enrollment files while retaining loopback-only administration:
 
 ```sh
-python3 tools/admin_setup.py --server ./bumrush-server --config ./server.cfg --data-dir ./server-data --client-dir ./private-client-export --host game.example.com --remote-admin
+python3 -B tools/admin_setup.py --server ./bumrush-server --config ./server.cfg --data-dir ./server-data --client-dir ./private-client-export --host game.example.com --admin-host 127.0.0.1
 ```
 
 The helper prompts privately. It never takes a raw passkey as a process argument. `--passkey-file` supports a protected unattended input file with no trailing newline. Setup refuses existing configuration or credentials. It exports `admin.cfg` and the public certificate into the private client directory. Transfer those files using trusted SSH/SCP, then place them in `cfg/` beside `Bumrush.exe`.
@@ -24,17 +28,21 @@ An example client CFG entry follows. Replace the passkey placeholder locally; ne
 [my-cloud]
 host="game.example.com"
 game_port=27960
-admin_host="game.example.com"
+admin_host="127.0.0.1"
 admin_port=27961
 username="owner"
 passkey="REPLACE-WITH-YOUR-PRIVATE-PASSKEY"
-certificate="server-my-cloud.crt"
+certificate="server-my-server.crt"
 expected_name="bumrush-server"
 ```
 
+The standalone helper writes the CFG and certificate directly inside `private-client-export/`; place them inside your client's `cfg/` folder after trusted transfer. That differs from the quick-start ZIP, which already contains a `cfg/` directory.
+
 The client automatically authenticates for a matching server on join. The Credentials dialog can save or select an entry and displays its active file path. A per-user `user://cfg/admin.cfg` overrides the portable file when present, including when the executable directory is unwritable. CFG files are data; they are never executed as console scripts. The server stores Argon2id passkey verifiers. Client CFG files contain the actual secret and must remain private.
 
-Administration uses certificate-validated TLS TCP, normally on port 27961. Gameplay uses UDP, normally 27960. The certificate must come from your trusted setup/SSH transfer, never an unauthenticated gameplay message. Existing loopback-only deployments remain loopback-only unless you explicitly enable direct administration and firewall its TCP port. For an SSH tunnel use `ssh -N -L 27961:127.0.0.1:27961 your-user@game.example.com` and set `admin_host="127.0.0.1"` in the CFG. The gameplay host stays unchanged.
+Do not use `--remote-admin` unless deliberately enabling direct administration and restricting its port to known staff source IPs in both host and provider firewalls. SSH forwarding is the default route in this guide.
+
+Administration uses certificate-validated TLS TCP, normally on port 27961. Gameplay uses UDP, normally 27960. The certificate must come from your trusted setup/SSH transfer, never an unauthenticated gameplay message. Existing loopback-only deployments remain loopback-only unless you explicitly enable direct administration and firewall its TCP port. For an SSH tunnel on your gaming PC use `ssh -N -L 127.0.0.1:27961:127.0.0.1:27961 your-user@game.example.com` (add `-p YOUR_SSH_PORT` for a custom SSH port) and set `admin_host="127.0.0.1"` in the CFG. The gameplay host stays unchanged.
 
 Authentication is bound to the current gameplay connection using a 30-second single-use challenge. Reconnect requires rebinding; map changes keep access. Credential rotation, revocation, disconnect and changing servers invalidate the old binding. An Owner can also connect from the main menu when the game is full and moderate before joining.
 
@@ -162,13 +170,15 @@ admin players
 admin_disconnect
 ```
 
-The CLI operator helper also remains available:
+The CLI operator helper also remains available from the extracted runtime package (the example below uses a foreground instance's `server-data/` layout):
 
 ```sh
-python3 tools/bumrushctl.py --profile server-data/owner.profile.json status
-python3 tools/bumrushctl.py --profile server-data/owner.profile.json console
+python3 -B tools/bumrushctl.py --profile server-data/owner.profile.json status
+python3 -B tools/bumrushctl.py --profile server-data/owner.profile.json console
 ```
 
 `admin_add <name> <role>` preserves legacy token enrollment; transfer its named profile, key and public certificate securely. Passkey enrollment through the Staff menu is the preferred in-game workflow. Do not revoke the local token identity used by service health/shutdown wrappers without updating their selected profile.
 
-Administration protocol 2 supports passkey authentication, gameplay binding and typed account requests while retaining version-1 token authentication. Live game protocol 26 requires matching clients and servers. Administration versions remain independent of game and demo versions. Requests, queues, authentication attempts, responses and password work are bounded. Neither console nor chat administration supports shell execution or arbitrary script commands.
+The quick-start passkey receipt and previously exported ZIP are not refreshed when staff rotate credentials. Update the client's CFG after rotation; rerunning setup does not recover a changed passkey.
+
+Administration protocol 2 supports passkey authentication, gameplay binding and typed account requests while retaining version-1 token authentication. Check the release manifest for the game protocol and use compatible clients and servers. Administration versions remain independent of game and demo versions. Requests, queues, authentication attempts, responses and password work are bounded. Neither console nor chat administration supports shell execution or arbitrary script commands.

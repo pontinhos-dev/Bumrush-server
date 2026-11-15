@@ -2,7 +2,7 @@
 
 [Documentation index](README.md) · [Configuration](server-configuration.md) · [Commands](server-commands.md) · [Operations](server-operations.md)
 
-The dedicated server runs endless free-for-all on Switchyard by default. To host FY Snow, set `map="fy_snow"` under `[server]` in server.cfg and restart. It supports up to eight players, with a separate server process owning movement, combat, inventories, pickups, scores, and respawns. Players connect by address or save an address as a favorite. Use the same release for server and clients.
+The dedicated server runs endless free-for-all on Switchyard by default. Furnace and FY Snow are also available. To choose a startup map, edit `[server] map` in `server.cfg` and restart. It supports up to eight players, with a separate server process owning movement, combat, inventories, pickups, scores, and respawns. Players connect by address or save an address as a favorite. Use the same release for server and clients.
 
 The deployment target is Ubuntu 24.04 on an Intel/AMD x86_64 machine. The Linux package contains its own runtime. A GPU, display, Godot editor, Steam account, and desktop session are unnecessary. Start with two CPU cores and 2 GB RAM as a sizing estimate, then measure your instance under eight-player load. These are planning figures, not a measured capacity guarantee.
 
@@ -13,6 +13,8 @@ SSH into an Ubuntu 24.04 Intel/AMD x86_64 server, then run:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart
 ```
+
+These unauthenticated download URLs work when the repository and release are public; they do not grant access to a private preview repository.
 
 The [distribution repository](https://github.com/pontinhos-dev/Bumrush-server) contains the inspectable installer and published runtime assets. No Git checkout or Godot installation is needed. `curl` must already be installed to download the script; on a minimal image, run `sudo apt-get update && sudo apt-get install -y curl ca-certificates` first.
 
@@ -28,13 +30,15 @@ The recovery key is `/opt/bumrush/quickstart/main/owner-passkey`, accessible onl
 
 ## Obtain the package manually
 
-Build from the project root using the matching Godot 4.7.2 editor and Linux export templates.
+Download `server-linux-x86_64.tar.gz` and its `.sha256` sidecar from the [release page](https://github.com/pontinhos-dev/Bumrush-server/releases). This distribution Git checkout contains the installer and documentation; runtime binaries, deployment templates, and operator helpers are inside the archive. Building a runtime requires the separate game source project.
+
+Use a trusted download route and verify before extracting or running package code:
 
 ```sh
-python tools/build_server.py --godot /path/to/godot --install-templates
+sha256sum --check server-linux-x86_64.tar.gz.sha256
 ```
 
-The output is `build/server-linux-x86_64.tar.gz`. Template installation downloads the official multi-platform archive and verifies its published SHA512. Subsequent builds can omit `--install-templates`. Copy the archive to your Linux machine over SSH, extract it, and keep `bumrush-server` beside `bumrush-server.pck`.
+A checksum from the same publisher detects corruption; it is not an independent publisher signature. Keep `bumrush-server`, `bumrush-server.pck`, and `admin_crypto.linux.x86_64.so` together.
 
 ```sh
 tar -xzf server-linux-x86_64.tar.gz
@@ -42,7 +46,10 @@ cd server-linux-x86_64
 chmod +x bumrush-server
 sudo apt-get update
 sudo apt-get install -y ca-certificates libstdc++6 libfontconfig1 python3
+python3 -B tools/bumrushctl.py local verify ../server-linux-x86_64.tar.gz
 ```
+
+The manual commands below run from the extracted `server-linux-x86_64` package directory, with the archive one level above. They are not commands for the small Git checkout. `python3 -B` avoids adding bytecode caches inside verified release folders.
 
 ## Passkey administration
 
@@ -60,20 +67,21 @@ Run as an ordinary Linux user from the extracted package directory. Initializati
 In another terminal, inspect the running process and its player list.
 
 ```sh
-python3 tools/bumrushctl.py --profile server-data/owner.profile.json status
-python3 tools/bumrushctl.py --profile server-data/owner.profile.json players
+python3 -B tools/bumrushctl.py --profile server-data/owner.profile.json status
+python3 -B tools/bumrushctl.py --profile server-data/owner.profile.json players
 ```
 
-The game listens on UDP 27960. Administration listens on TLS TCP 27961 at loopback by default. The owner profile and credential are private files. Keep them outside publicly served folders and release archives.
+The game listens on UDP 27960. Administration listens on TLS TCP 27961 at loopback by default. This foreground initialization uses legacy token enrollment. For prompted passkey enrollment and a portable CFG, use the [standalone setup helper](server-commands.md#standalone-passkey-enrollment). The owner profile and credential are private files. Keep them outside publicly served folders and release archives.
 
 Open the client’s Multiplayer menu, enter the server address and port, then join. The console also accepts `connect 192.0.2.10 27960`. Replace the documentation address with your actual server address. To save it, use `favorite Basement 192.0.2.10 27960`, then inspect `favorites`, or use the menu’s saved-server controls.
 
 ## Install a native service
 
-The package installer verifies the release and generates isolated service/config/state paths for a named instance. Follow the [release workflow](server-release-workflow.md) for account creation and installation:
+The package installer verifies the release and creates isolated service/config/state paths. Create its service account before installing:
 
 ```sh
-sudo python3 tools/bumrushctl.py local install ../server-linux-x86_64.tar.gz --root /opt/bumrush --instance main --user bumrush --register-service --start
+getent passwd bumrush >/dev/null || sudo useradd --system --user-group --home-dir /var/lib/bumrush --shell /usr/sbin/nologin bumrush
+sudo python3 -B tools/bumrushctl.py local install ../server-linux-x86_64.tar.gz --root /opt/bumrush --instance main --user bumrush --register-service --start
 sudo systemctl status bumrush-main
 sudo journalctl -u bumrush-main -f
 ```
@@ -85,7 +93,7 @@ Repeating installation preserves configuration, credentials and bans. Use `updat
 Install Docker Engine and Compose on Linux. The same installer builds the package image and generates a Compose project with instance-specific ports/config/data:
 
 ```sh
-sudo python3 tools/bumrushctl.py local install ../server-linux-x86_64.tar.gz --root /srv/bumrush --instance main --backend docker --start
+sudo python3 -B tools/bumrushctl.py local install ../server-linux-x86_64.tar.gz --root /srv/bumrush --instance main --backend docker --start
 sudo docker compose --project-name bumrush-main -f /srv/bumrush/instances/main/compose.yaml ps
 sudo docker compose --project-name bumrush-main -f /srv/bumrush/instances/main/compose.yaml logs -f
 ```
@@ -102,10 +110,9 @@ The supplied Compose/unit files remain hand-managed examples. Create config/stat
 4. Allow the same UDP port in the host firewall. Keep your existing SSH access rule.
 5. Give players the public address or a DNS hostname pointing to it. Test with a real client outside the server’s network.
 
-For UFW-managed hosts, first preserve the SSH rule, then allow the game port. Adapt the SSH rule if your SSH service uses a custom port.
+For UFW-managed hosts, preserve the rule for your actual SSH port, then allow the game port. Do not enable an inactive firewall remotely before checking SSH access.
 
 ```sh
-sudo ufw allow OpenSSH
 sudo ufw allow 27960/udp
 sudo ufw status verbose
 ```
