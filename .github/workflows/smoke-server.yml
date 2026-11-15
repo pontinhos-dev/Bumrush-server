@@ -27,6 +27,7 @@ jobs:
           import json
           from pathlib import Path
           import socket
+          import ssl
           import stat
           import subprocess
           import zipfile
@@ -58,7 +59,36 @@ jobs:
               assert json.loads(entry['passkey']) == passkey, 'Enrollment passkey differs'
               assert json.loads(entry['admin_host']) == '127.0.0.1'
               assert int(entry['admin_port']) == 27961
-          print('Service, Owner enrollment, private outputs, and loopback administration verified.')
+              certificate = archive.read('cfg/server-main.crt').decode('utf-8')
+
+          def request(secure, reader, payload):
+              frame = (json.dumps(payload) + '\n').encode('utf-8')
+              assert len(frame) <= 8192, 'Administration request exceeds its limit'
+              secure.sendall(frame)
+              raw = reader.readline(65537)
+              assert raw and len(raw) <= 65536 and raw.endswith(b'\n'), 'Invalid administration response frame'
+              response = json.loads(raw)
+              assert isinstance(response, dict) and isinstance(response.get('ok'), bool), 'Invalid administration response'
+              return response
+
+          context = ssl.create_default_context(cadata=certificate)
+          endpoint = (json.loads(entry['admin_host']), int(entry['admin_port']))
+          with socket.create_connection(endpoint, timeout=8) as tcp:
+              with context.wrap_socket(tcp, server_hostname=json.loads(entry['expected_name'])) as secure:
+                  with secure.makefile('rb') as reader:
+                      authenticated = request(secure, reader, {
+                          'type': 'auth', 'version': 2,
+                          'username': json.loads(entry['username']),
+                          'passkey': json.loads(entry['passkey']),
+                      })
+                      assert authenticated.get('ok') is True, 'Live Owner passkey authentication failed'
+                      access = authenticated.get('data')
+                      assert isinstance(access, dict) and access.get('role') == 'owner' and access.get('username') == 'owner', 'Owner access was not granted'
+                      status = request(secure, reader, {'type': 'command', 'id': 1, 'command': 'status'})
+                      assert status.get('ok') is True and status.get('id') == 1, 'Authenticated status command failed'
+                      state = status.get('data')
+                      assert isinstance(state, dict) and state.get('port') == 27960 and state.get('admin_protocol') == 2, 'Unexpected live server status'
+          print('Service, private enrollment, loopback administration, certificate-validated Owner passkey login, and status command verified.')
           PY
           sudo sha256sum \
             /opt/bumrush/quickstart/main/owner-passkey \
