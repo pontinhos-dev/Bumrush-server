@@ -1,0 +1,38 @@
+# Keep the pre-existing nested Desktop repository separate.
+/Bumrush/
+
+# Release binaries are GitHub Release assets, not Git blobs.
+/build/
+/releases/
+/server-linux-*/
+*.tar.gz
+*.zip
+*.exe
+*.pck
+*.dll
+*.so
+
+# Private installation, enrollment, and runtime state.
+/cfg/
+/server-data/
+/instances/
+/quickstart/
+*.key
+*.crt
+*.profile.json
+admin.cfg
+admin.cfg.tmp
+server.cfg
+server.cfg.tmp
+admins.json
+bans.json
+owner-passkey
+.owner-passkey-*
+
+# Local tooling state.
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+Thumbs.db
+*.log

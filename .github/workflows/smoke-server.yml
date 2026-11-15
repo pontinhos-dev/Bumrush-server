@@ -1,0 +1,81 @@
+name: Linux server installation smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-repeat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install the published server
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart --host 127.0.0.1
+          sudo systemctl is-active --quiet bumrush-main
+
+      - name: Verify private enrollment and loopback administration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 - <<'PY'
+          import configparser
+          import json
+          from pathlib import Path
+          import socket
+          import stat
+          import subprocess
+          import zipfile
+
+          root = Path('/opt/bumrush')
+          instance = root / 'instances/main'
+          passkey_file = root / 'quickstart/main/owner-passkey'
+          bundle = root / 'bumrush-main-admin.zip'
+          passkey = passkey_file.read_text(encoding='utf-8')
+          assert len(passkey) == 16 and passkey.isascii() and passkey.isprintable(), 'Unexpected generated passkey format'
+          for private in (passkey_file, bundle):
+              assert stat.S_ISREG(private.lstat().st_mode), 'Private output must be a regular file'
+              assert private.stat().st_mode & 0o077 == 0, 'Private output has overly broad permissions'
+          admins = json.loads((instance / 'data/admins.json').read_text(encoding='utf-8'))
+          assert isinstance(admins, dict) and 'owner' in admins, 'Owner account missing'
+          config = configparser.ConfigParser(interpolation=None)
+          config.read(instance / 'config/server.cfg', encoding='utf-8')
+          assert json.loads(config['admin']['bind']) == '127.0.0.1', 'Administration must remain on loopback'
+          assert int(config['admin']['port']) == 27961
+          with socket.create_connection(('127.0.0.1', 27961), timeout=5):
+              pass
+          listeners = subprocess.check_output(['ss', '-H', '-ltn', 'sport = :27961'], text=True).splitlines()
+          assert listeners and all(row.split()[3] == '127.0.0.1:27961' for row in listeners), 'Unexpected administration listener'
+          with zipfile.ZipFile(bundle) as archive:
+              assert set(archive.namelist()) == {'cfg/admin.cfg', 'cfg/server-main.crt'}, 'Unexpected enrollment ZIP layout'
+              enrolled = configparser.ConfigParser(interpolation=None)
+              enrolled.read_string(archive.read('cfg/admin.cfg').decode('utf-8'))
+              entry = enrolled['main']
+              assert json.loads(entry['passkey']) == passkey, 'Enrollment passkey differs'
+              assert json.loads(entry['admin_host']) == '127.0.0.1'
+              assert int(entry['admin_port']) == 27961
+          print('Service, Owner enrollment, private outputs, and loopback administration verified.')
+          PY
+          sudo sha256sum \
+            /opt/bumrush/quickstart/main/owner-passkey \
+            /opt/bumrush/instances/main/config/server.cfg \
+            /opt/bumrush/instances/main/data/admins.json \
+            /opt/bumrush/bumrush-main-admin.zip > "$RUNNER_TEMP/bumrush-enrollment-before.sha256"
+
+      - name: Repeat installation and verify preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/pontinhos-dev/Bumrush-server/main/install.sh | bash -s -- --quickstart --host 127.0.0.1
+          sudo systemctl is-active --quiet bumrush-main
+          sudo sha256sum --quiet --check "$RUNNER_TEMP/bumrush-enrollment-before.sha256"
+          echo 'Repeat installation preserved the passkey, configuration, Owner record, and private enrollment ZIP.'
+
+      - name: Stop the test server
+        if: always()
+        shell: bash
+        run: sudo systemctl stop bumrush-main || true
