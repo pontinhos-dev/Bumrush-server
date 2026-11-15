@@ -51,4 +51,6 @@ External WAN capacity, home router behavior, provider firewall settings, and sus
 
 Keep installer behavior, documented flags, release asset names, and package layout aligned. Validate docs links and examples when changing operating procedures. Keep generated private enrollment files, logs, game source, and backups out of this repository.
 
+Write the SHA256 sidecar with POSIX LF endings, including when preparing it on Windows. GNU `sha256sum --strict --check` must accept it before upload. An archive's own manifest does not replace an outer checksum obtained from the trusted release route.
+
 Use [release readiness](release-readiness.md) before public distribution. Update runtime packages only through the game project's validated release workflow; do not silently replace published runtime components after testing.

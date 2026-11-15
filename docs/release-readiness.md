@@ -14,6 +14,7 @@ Gitleaks 8.30.1, obtained from its official release and checksum-verified, scann
 
 - Replaced personal author/committer email metadata with the account's GitHub noreply identity throughout published history and configured future commits the same way.
 - Changed release provenance to record a project-relative gate-evidence path instead of an absolute developer workstation path. A regression test protects this boundary.
+- Reissued the SHA256 sidecar with POSIX LF line endings so GNU checksum verification works on Linux.
 - Restricted packaged documentation to the operator guides instead of distributing unrelated game-development notes.
 - Expanded ignores for environment files, private key formats, SSH keys, password databases, private CFGs, data directories, enrollment ZIPs, and backups.
 - Added a full-history secret-scanning workflow with read-only permissions, pinned official actions, redacted output, and no report-artifact uploads.
@@ -42,6 +43,6 @@ Documentation checks cover local Markdown links/anchors, shell-block syntax, and
 
 No live credentials were identified by this review. Pattern scans and binary inspection cannot prove every possible encoding of a secret absent. Normal Godot packaging leaves compiled scripts and runtime assets inspectable; it is not source or asset obfuscation.
 
-The repository was briefly public before this review. Changing visibility and rewriting reachable history cannot establish that no outside copies or cached metadata exist. No forks were reported at the start of the review. Do not treat Git history rewriting as credential revocation if a real credential is ever exposed.
+The repository was briefly public before this review. Changing visibility and rewriting reachable history cannot establish that no outside copies or cached metadata exist. No forks were reported at the start of the review. Do not treat Git history rewriting as credential revocation if a real credential is ever exposed. [GitHub's history-cleanup guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) explains these limits.
 
 Installation/startup checks do not establish provider-specific WAN behavior, sustained eight-player capacity, or bandwidth cost.
